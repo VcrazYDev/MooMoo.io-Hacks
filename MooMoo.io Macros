@@ -1,263 +1,304 @@
 // ==UserScript==
-// @name         MooMoo.io Macros
+// @name         MooMoo.io – Macro Placers
 // @namespace    https://greasyfork.org/en/users/1064285-vcrazy-gaming
-// @version      0.1
-// @description  Enables macros for MooMoo.io: F -> Place Trap/Boost Pad, V -> Place Spike, Q -> Place Food, N -> Place Mill, H -> Place Turret
+// @version      1
+// @description  Q/F/V/N/H/G - Macro Placers.
 // @author       _VcrazY_
 // @match        *://*.moomoo.io/*
 // @icon         https://moomoo.io/img/favicon.png?v=1
-// @require https://greasyfork.org/scripts/423602-msgpack/code/msgpack.js?version=1005014
-// @run-at       document-start
-// @grant        unsafeWindow
+// @grant        none
+// @require      https://update.greasyfork.org/scripts/423602/1005014/msgpack.js
 // @license      MIT
 // ==/UserScript==
-(() => {
-  // Constants and Variables
-  window.onbeforeunload = null;
-  let items = [];
-  let mouseX,
-    mouseY,
-    weapons = [],
-    width,
-    height;
-  let coreURL = new URL(window.location.href);
-  window.sessionStorage.force = coreURL.searchParams.get("fc");
-  let ws,
-    msgpack5 = window.msgpack;
-  const inventory = {
-    primary: null,
-    secondary: null,
-    food: null,
-    wall: null,
-    spike: null,
-    mill: null,
-    mine: null,
-    boostPad: null,
-    trap: null,
-    turret: null,
-    spawnpad: null
-  };
-  const myPlayer = {
-    sid: null,
-    x: null,
-    y: null,
-    dir: null,
-    buildIndex: null,
-    weaponIndex: null,
-    weaponVariant: null,
-    team: null,
-    isLeader: null,
-    skinIndex: null,
-    tailIndex: null,
-    iconIndex: null
-  };
+document.querySelector("#pre-content-container").remove();
+document.getElementById("enterGame").addEventListener("click", autohide);
+function autohide() {
+    document.getElementById("ot-sdk-btn-floating").hide();
+}
+let mouseX;
+let mouseY;
+let width;
+let height;
+let coreURL = new URL(window.location.href);
+window.sessionStorage.force = coreURL.searchParams.get("fc");
+var getNearEnemy;
+var nearestEnemyAngle;
+var checkEnemy;
+var ws;
+var msgpack5 = window.msgpack;
+var boostDir;
+let player = {};
+document.msgpack = window.msgpack;
 
-  // Helper Functions
-  /**
-   * Utility function to join arrays
-   * @param {Array} message - The array to join
-   * @returns {Array} - Joined array
-   */
-  const join = message => Array.isArray(message) ? [...message] : [...message];
-
-  /**
-   * Hook function for WebSocket
-   * @param {object} data - WebSocket message
-   */
-  const hookWS = data => {
-    // PARSE MESSAGE:
-    let tmpData = msgpack5.decode(new Uint8Array(data.data));
-    if ((data = undefined) || (tmpData = (data = tmpData.length > 1 ? [tmpData[0], ...join(tmpData[1])] : tmpData)[0]) || data) {
-      let addEventListener = {
-        "setupGame": "C",
-        "updateItems": "V"
-      };
-
-      // CALL EVENT:
-      if ("io-init" == tmpData) {
-        let gameCanvas = document.getElementById("gameCanvas");
-        width = gameCanvas.clientWidth;
-        height = gameCanvas.clientHeight;
-        document.getElementById(window).resize(function () {
-          width = gameCanvas.clientWidth;
-          height = gameCanvas.clientHeight;
-        });
-        gameCanvas.addEventListener("mousemove", f => {
-          mouseX = f.clientX;
-          mouseY = f.clientY;
-        });
-      }
-
-      // SETUP GAME:
-      if (addEventListener.setupGame == tmpData && null === myPlayer.sid) {
-        myPlayer.sid = data[1];
-        items = [0, 3, 6, 10];
-        weapons = [0];
-      }
-      // UPDATE ITEMS:
-      if (addEventListener.updateItems == tmpData) {
-        if (data[1]) {
-          if (data[2]) {
-            weapons = data[1];
-          } else {
-            items = data[1];
-          }
-        }
-      }
-      cacheItems();
+// define websocket
+WebSocket.prototype.oldSend = WebSocket.prototype.send;
+WebSocket.prototype.send = function (message) {
+    if (!ws) {
+        document.ws = this;
+        ws = this;
+        joinServer(this);
     }
-  };
-
-  /**
-   * Function to send a packet
-   * @param {string} event - Event type
-   * @param {*} e - Parameter e
-   */
-  function sendPacket(e) {
-    // EXTRACT DATA ARRAY:
-    let t = Array.prototype.slice.call(arguments, 1);
-    // SEND MESSAGE:
-    ws.send(window.msgpack.encode([e, t]));
-  }
-
-  // PLACE:
-  /**
-   * Function to place an item
-   * @param {number} event - Event type
-   * @param {number} ang - Angle
-   */
-  const place = (id, ang) => {
-    sendPacket("G", id, false);
-    hit();
-    slectWeapons();
-  };
-  const slectWeapons = () => {
-    sendPacket("G", weapons[0], true);
-  };
-  const hit = (id, ang) => {
-    sendPacket("d", 1, ang);
-    sendPacket("d", 0, ang);
-  };
-
-  // ITEM GROUPS/WEAPONS:
-  /**
-   * Cache the player's items
-   */
-  const cacheItems = () => {
-    const categories = [{
-      category: 'primary',
-      start: 0,
-      end: 8
-    }, {
-      category: 'secondary',
-      start: 9,
-      end: 15
-    }, {
-      category: 'food',
-      start: 16,
-      end: 18
-    }, {
-      category: 'wall',
-      start: 19,
-      end: 21
-    }, {
-      category: 'spike',
-      start: 22,
-      end: 25
-    }, {
-      category: 'mill',
-      start: 26,
-      end: 28
-    }, {
-      category: 'mine',
-      start: 29,
-      end: 30
-    }, {
-      category: 'boostPad',
-      start: 31,
-      end: 32
-    }, {
-      category: 'trap',
-      start: 31,
-      end: 32
-    }, {
-      category: 'turret',
-      start: 29,
-      end: 30
-    }, {
-      category: 'spawnpad',
-      start: 36,
-      end: 36
-    }];
-    categories.forEach(category => {
-      for (let i = category.start; i <= category.end; i++) {
-        const element = document.getElementById(`actionBarItem${i}`);
-        if (element !== null && element.offsetParent !== null) {
-          inventory[category.category] = i - 16;
-        }
-      }
+    this.oldSend(message);
+};
+function joinServer(socket) {
+    // Adding an event listener
+    socket.addEventListener("message", function (message) {
+        handleServerPackets(message);
     });
-  };
-  var repeater = function (key, action, interval) {
-    let _isKeyDown = false;
-    let _intervalId;
+}
+function handleServerPackets(message) {
+    let tmpData = msgpack5.decode(new Uint8Array(message.data));
+    let data;
+    if (tmpData.length > 1) {
+        data = [tmpData[0], ...tmpData[1]];
+        if (data[1] instanceof Array) {
+            data = data;
+        }
+    } else {
+        data = tmpData;
+    }
+    let item = data[0];
+    if (!data) {
+        return;
+    }
+    switch (item) {
+        case "io-init":
+            {
+                let gameCanvas = document.getElementById("gameCanvas");
+                width = gameCanvas.clientWidth;
+                height = gameCanvas.clientHeight;
+                window.addEventListener("resize", function () {
+                    width = gameCanvas.clientWidth;
+                    height = gameCanvas.clientHeight;
+                });
+                gameCanvas.addEventListener("mousemove", event => {
+                    mouseX = event.clientX;
+                    mouseY = event.clientY;
+                });
+            }
+            break;
+        case "C":
+            setupGame(data);
+            break;
+        case "a":
+            updatePlayers(data);
+            break;
+    }
+    cacheItems();
+}
+function sendPacket(packetName) {
+    let content = Array.prototype.slice.call(arguments, 1);
+    ws.send(msgpack5.encode([packetName, content]));
+}
+function sendPlace(id, angle) {
+    let oldweaponIndex = player.weaponIndex;
+    sendPacket("G", id, null);
+    sendPacket("d", 1, angle);
+    sendPacket("d", 0, angle);
+    sendPacket("G", oldweaponIndex, true);
+}
+var repeater = function mockedDriverFn(element, method, options) {
+    var d = ![];
+    var e = undefined;
     return {
-      start(keycode) {
-        if (keycode == key && document.activeElement.id.toLowerCase() !== 'chatbox') {
-          _isKeyDown = true;
-          if (_intervalId === undefined) {
-            _intervalId = setInterval(() => {
-              action();
-              if (!_isKeyDown) {
-                clearInterval(_intervalId);
-                _intervalId = undefined;
-              }
-            }, interval);
-          }
+        start: function start(child) {
+            if (child == element && document.activeElement.id.toLowerCase() !== "chatbox") {
+                d = !![];
+                if (e === undefined) {
+                    e = setInterval(function () {
+                        method();
+                        if (!d) {
+                            clearInterval(e);
+                            e = undefined;
+                            console.log("cleared");
+                        }
+                    }, options);
+                }
+            }
+        },
+        stop: function Chat(parent) {
+            if (parent == element && document.activeElement.id.toLowerCase() !== "chatbox") {
+                d = ![];
+            }
         }
-      },
-      stop(keycode) {
-        if (keycode == key && document.activeElement.id.toLowerCase() !== 'chatbox') {
-          _isKeyDown = false;
-        }
-      }
     };
-  };
-  const millPlacer = repeater(78, () => {
-    place(inventory.mill);
-  }, 100);
-  const turretPlacer = repeater(72, () => {
-    place(inventory.turret);
-  }, 100);
-  const spikePlacer = repeater(86, () => {
-    place(inventory.spike);
-  }, 100);
-  const trapPlacer = repeater(70, () => {
-    place(inventory.trap);
-  }, 100);
-  const foodPlacer = repeater(81, () => {
-    place(inventory.food);
-  }, 100);
-  window.unsafeWindow.addEventListener('keydown', function (e) {
-    foodPlacer.start(e.keyCode);
-    millPlacer.start(e.keyCode);
-    turretPlacer.start(e.keyCode);
-    spikePlacer.start(e.keyCode);
-    trapPlacer.start(e.keyCode);
-  });
-  window.unsafeWindow.addEventListener('keyup', e => {
-    millPlacer.stop(e.keyCode);
-    foodPlacer.stop(e.keyCode);
-    turretPlacer.stop(e.keyCode);
-    spikePlacer.stop(e.keyCode);
-    trapPlacer.stop(e.keyCode);
-  });
-  // Override WebSocket's send method
-  document.msgpack = window.msgpack;
-  WebSocket.prototype.oldSend = WebSocket.prototype.send;
-  WebSocket.prototype.send = function (event) {
-    ws = ws || this;
-    ws.addEventListener("message", hookWS);
-    this.oldSend(event);
-  };
-})();
+};
+function boostSpike() {
+    boostDir = nearestEnemyAngle;
+    sendPlace(player.inventory.spike, boostDir + UTILS.toRadians(90));
+    sendPlace(player.inventory.spike, boostDir - UTILS.toRadians(90));
+    sendPlace(player.inventory.trap, boostDir);
+    sendPacket("a", boostDir);
+}
+var foodPlacer = repeater(81, function () {
+    sendPlace(player.inventory.food);
+}, 50);
+var boostPlacer = repeater(70, function () {
+    sendPlace(player.inventory.trap);
+}, 50);
+var spikePlacer = repeater(86, function () {
+    sendPlace(player.inventory.spike);
+}, 50);
+var millPlacer = repeater(78, function () {
+    sendPlace(player.inventory.mill);
+}, 50);
+var turretPlacer = repeater(72, function () {
+    sendPlace(player.inventory.turret);
+}, 50);
+var boostSpiker = repeater(71, function () {
+    sendPlace(boostSpike());
+}, 150);
+document.addEventListener("keydown", function (event) {
+    foodPlacer.start(event.keyCode);
+    boostPlacer.start(event.keyCode);
+    spikePlacer.start(event.keyCode);
+    millPlacer.start(event.keyCode);
+    turretPlacer.start(event.keyCode);
+    boostSpiker.start(event.keyCode);
+});
+document.addEventListener("keyup", function (event) {
+    foodPlacer.stop(event.keyCode);
+    turretPlacer.stop(event.keyCode);
+    boostPlacer.stop(event.keyCode);
+    spikePlacer.stop(event.keyCode);
+    millPlacer.stop(event.keyCode);
+    boostSpiker.stop(event.keyCode);
+});
+function isElementVisible(e) {
+    return e.offsetParent !== null;
+}
+const UTILS = {
+    toRadians: function (degree) {
+        return degree * 0.01745329251;
+    },
+    getDistance: function (y1, y2, x1, x2) {
+        return Math.sqrt(Math.pow(x1 - y1, 2) + Math.pow(x2 - y2, 2));
+    },
+    getDirection: function (y2, y1, x2, x1) {
+        return Math.atan2(x1 - y1, x2 - y2);
+    },
+    atan2: function (y2, y1, x2, x1) {
+        return Math.atan2(x1 - y1, x2 - y2);
+    },
+    dist: function (x1, y1, x2, y2) {
+        return UTILS.getDistance(x1, y1, x2, y2);
+    },
+    distance: function (x1, y1, x2, y2) {
+        return UTILS.getDistance(x1, y1, x2, y2);
+    },
+    angle: function (x1, y1, x2, y2) {
+        return UTILS.atan2(x1, y1, x2 - y2);
+    }
+};
+function cacheItems() {
+    player.inventory = {};
+    const items = [{
+        category: "primary",
+        start: 0,
+        end: 9
+    }, {
+        category: "secondary",
+        start: 9,
+        end: 16
+    }, {
+        category: "food",
+        start: 16,
+        end: 19,
+        subtract: true
+    }, {
+        category: "wall",
+        start: 19,
+        end: 22,
+        subtract: true
+    }, {
+        category: "spike",
+        start: 22,
+        end: 26,
+        subtract: true
+    }, {
+        category: "mill",
+        start: 26,
+        end: 29,
+        subtract: true
+    }, {
+        category: "mine",
+        start: 29,
+        end: 31,
+        subtract: true
+    }, {
+        category: "boostPad",
+        start: 31,
+        end: 33,
+        subtract: true
+    }, {
+        category: "trap",
+        start: 31,
+        end: 33,
+        subtract: true
+    }, {
+        category: "turret",
+        start: 33,
+        end: 39,
+        subtract: true
+    }, {
+        category: "spawnPad",
+        start: 36,
+        end: 37,
+        subtract: true
+    }];
+    for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+        const {
+            category,
+            start,
+            end,
+            subtract
+        } = items[itemIndex];
+        for (let itemId = start; itemId < end; itemId++) {
+            const actionBarItem = document.getElementById(`actionBarItem${itemId}`);
+            if (actionBarItem && isElementVisible(actionBarItem)) {
+                player.inventory[category] = subtract ? itemId - 16 : itemId;
+                break;
+            }
+        }
+    }
+}
+function setupGame(data) {
+    if (player.sid == null) {
+        player.sid = data[1];
+    }
+}
+function updatePlayers(data) {
+    checkEnemy = [];
+    var f = 0;
+    for (; f < data[1].length / 13; f++) {
+        var object = data[1].slice(13 * f, 13 * f + 13);
+        if (object[0] == player.sid) {
+            player.x = object[1];
+            player.y = object[2];
+            player.dir = object[3];
+            player.buildIndex = object[4];
+            player.weaponIndex = object[5];
+            player.team = object[7];
+            player.isLeader = object[8];
+            player.skinIndex = object[9];
+            player.tailIndex = object[10];
+            player.iconIndex = object[11];
+        } else if (object[7] != player.team || object[7] === null) {
+            checkEnemy.push(object);
+            // returns an array of enemies
+        }
+    }
+    if (checkEnemy) {
+        getNearEnemy = checkEnemy.sort(function (tmp1, tmp2) {
+            return UTILS.getDistance(tmp1[1], tmp1[2], player.y, player.x) - UTILS.getDistance(tmp2[1], tmp2[2], player.y, player.x);
+        })[0];
+        // returns the nearest enemy
+    }
+    if (getNearEnemy) {
+        nearestEnemyAngle = UTILS.getDirection(player.x, player.y, getNearEnemy[1], getNearEnemy[2]);
+        // returns the angle to the nearest enemy
+    }
+    if (!getNearEnemy) {
+        nearestEnemyAngle = player.dir;
+    }
+}
